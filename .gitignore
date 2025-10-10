@@ -37,9 +37,9 @@ ENV/
 .ipynb_checkpoints/
 *.ipynb
 
-# Data
-data/
-datasets/
+# Data (exclude data directories but not src/data/)
+/data/
+/datasets/
 *.h5
 *.hdf5
 *.npy
