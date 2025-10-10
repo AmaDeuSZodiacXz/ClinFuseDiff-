@@ -1,0 +1,77 @@
+# Default configuration for ClinFuseDiff
+
+# Model architecture
+model:
+  # Encoder settings
+  encoder:
+    image_backbone: "resnet50"
+    image_feat_dim: 2048
+    clinical_hidden_dims: [256, 512, 1024]
+    clinical_feat_dim: 1024
+
+  # Diffusion settings
+  diffusion:
+    num_timesteps: 1000
+    beta_schedule: "linear"
+    hidden_dim: 512
+    num_layers: 6
+    num_heads: 8
+    dropout: 0.1
+
+  # Fusion settings
+  fusion:
+    fusion_dim: 512
+    num_modalities: 3  # CT, PET, Clinical
+
+  # Prediction head
+  predictor:
+    hidden_dims: [256, 128]
+    num_classes: 2  # Binary classification
+    dropout: 0.3
+
+# Training settings
+training:
+  batch_size: 16
+  num_epochs: 100
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  warmup_epochs: 10
+  gradient_clip: 1.0
+
+  # Loss weights
+  loss_weights:
+    reconstruction: 1.0
+    contrastive: 0.5
+    diffusion: 1.0
+    prediction: 1.0
+
+# Test-time training settings
+ttt:
+  enabled: true
+  num_steps: 5
+  learning_rate: 1e-5
+  objectives: ["reconstruction", "contrastive", "diffusion"]
+
+# Data settings
+data:
+  dataset: "nsclc"
+  data_dir: "./data"
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  num_workers: 4
+
+  # Missing modality simulation
+  missing_modality:
+    train_prob: 0.0  # No missing during training
+    test_prob: 0.3   # 30% missing during test
+
+# Experiment settings
+experiment:
+  name: "clinfusediff_baseline"
+  seed: 42
+  save_dir: "./experiments"
+  log_interval: 10
+  eval_interval: 1
+  save_interval: 5
+  use_wandb: false
