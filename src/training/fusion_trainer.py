@@ -80,6 +80,14 @@ class FusionTrainer:
         self.checkpoint_dir = self.experiment_dir / 'checkpoints'
         self.checkpoint_dir.mkdir(exist_ok=True)
 
+        # Setup logging to file
+        self.log_file = self.experiment_dir / 'training_log.txt'
+        self._log(f"{'='*70}")
+        self._log(f"CLIN-FuseDiff++ Training Log")
+        self._log(f"Started: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self._log(f"Experiment: {config['experiment']['name']}")
+        self._log(f"{'='*70}\n")
+
         # Setup WandB logging
         self.use_wandb = config['experiment'].get('use_wandb', False) and WANDB_AVAILABLE
         if self.use_wandb:
@@ -451,6 +459,17 @@ class FusionTrainer:
 
         print(f"✓ Loaded checkpoint from epoch {self.current_epoch}")
 
+    def _log(self, message: str, console: bool = False):
+        """Write message to log file and optionally print to console"""
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        log_message = f"[{timestamp}] {message}"
+
+        with open(self.log_file, 'a') as f:
+            f.write(log_message + '\n')
+
+        if console:
+            print(message)
+
     def train(
         self,
         train_loader: DataLoader,
@@ -524,13 +543,24 @@ class FusionTrainer:
             # Step scheduler
             self.scheduler.step()
 
-            # Print training summary
-            print(f"\nEpoch {epoch} Summary:")
-            print(f"  Train Loss: {train_losses['total']:.4f}")
-            print(f"    Diffusion: {train_losses['diffusion']:.4f}")
-            print(f"    ROI: {train_losses['roi']:.4f}")
-            print(f"  LR: {self.optimizer.param_groups[0]['lr']:.2e}")
+            # Print and log training summary
+            summary = f"\nEpoch {epoch} Summary:"
+            summary += f"\n  Train Loss: {train_losses['total']:.4f}"
+            summary += f"\n    Diffusion: {train_losses['diffusion']:.4f}"
+            summary += f"\n    ROI: {train_losses['roi']:.4f}"
+            summary += f"\n  LR: {self.optimizer.param_groups[0]['lr']:.2e}"
+            print(summary)
             print("")
+
+            # Log to file
+            self._log(f"Epoch {epoch}/{self.config['training']['num_epochs']}")
+            self._log(f"  Train Loss: {train_losses['total']:.4f} (Diff: {train_losses['diffusion']:.4f}, ROI: {train_losses['roi']:.4f})")
+            if val_losses:
+                self._log(f"  Val Loss: {val_losses.get('total', 0):.4f}")
+            if val_metrics:
+                metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in list(val_metrics.items())[:5]])
+                self._log(f"  Val Metrics: {metrics_str}")
+            self._log("")
 
         print("=" * 50)
         print("✓ Training complete!")
