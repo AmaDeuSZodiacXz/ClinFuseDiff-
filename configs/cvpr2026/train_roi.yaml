@@ -42,7 +42,7 @@ model:
   diffusion:
     num_timesteps: 1000
     beta_schedule: "cosine"  # Cosine schedule (better for images)
-    sampling_timesteps: 50  # DDIM sampling (faster inference)
+    sampling_timesteps: 20  # DDIM sampling (20 steps = faster validation)
 
   # Lesion segmentation head (frozen pretrained)
   lesion_head:
