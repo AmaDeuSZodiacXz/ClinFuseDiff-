@@ -126,20 +126,28 @@ class ROIMetrics:
     # ==================== ROI-Specific Metrics ====================
 
     def roi_ssim(self, pred, target, mask):
-        """SSIM within ROI"""
-        pred_masked = pred * mask
-        target_masked = target * mask
-        n_pixels = mask.sum() + 1e-8
+        """
+        SSIM within ROI
 
-        mu_pred = pred_masked.sum() / n_pixels
-        mu_target = target_masked.sum() / n_pixels
+        FIXED: Extract only ROI pixels for statistics computation
+        Previous bug: Masked multiplication included zeros in mean/variance
+        """
+        # Flatten and extract only ROI pixels
+        mask_flat = mask.view(-1) > 0.5
 
-        pred_centered = pred_masked - mu_pred * mask
-        target_centered = target_masked - mu_target * mask
+        if mask_flat.sum() == 0:
+            return torch.tensor(0.0)
 
-        sigma_pred = (pred_centered ** 2).sum() / n_pixels
-        sigma_target = (target_centered ** 2).sum() / n_pixels
-        sigma_pred_target = (pred_centered * target_centered).sum() / n_pixels
+        pred_roi = pred.view(-1)[mask_flat]
+        target_roi = target.view(-1)[mask_flat]
+
+        # Compute statistics on ROI pixels only
+        mu_pred = pred_roi.mean()
+        mu_target = target_roi.mean()
+
+        sigma_pred = pred_roi.var()
+        sigma_target = target_roi.var()
+        sigma_pred_target = ((pred_roi - mu_pred) * (target_roi - mu_target)).mean()
 
         C1, C2 = 0.01 ** 2, 0.03 ** 2
         ssim = ((2 * mu_pred * mu_target + C1) * (2 * sigma_pred_target + C2)) / \
@@ -183,21 +191,51 @@ class ROIMetrics:
 
     # ==================== Lesion Boundary Metrics ====================
 
-    def dice_score(self, pred, target, smooth=1.0):
-        """Dice coefficient"""
+    def dice_score(self, pred, target, smooth=1e-8):
+        """
+        Dice coefficient with proper handling of edge cases
+
+        Cases:
+        1. Both empty (no lesion): Return NaN (not 1.0!)
+        2. One empty, one not: Return 0.0 (complete mismatch)
+        3. Both non-empty: Return normal Dice
+        """
         pred_flat = pred.view(-1)
         target_flat = target.view(-1)
 
+        # Check if both are empty (no lesion case)
+        pred_sum = pred_flat.sum()
+        target_sum = target_flat.sum()
+
+        if pred_sum < 1e-6 and target_sum < 1e-6:
+            # Both empty - no lesion to evaluate
+            return torch.tensor(float('nan'))
+
+        if pred_sum < 1e-6 or target_sum < 1e-6:
+            # Only one is empty - complete mismatch
+            return torch.tensor(0.0)
+
+        # Normal Dice computation
         intersection = (pred_flat * target_flat).sum()
-        union = pred_flat.sum() + target_flat.sum()
+        union = pred_sum + target_sum
 
         dice = (2.0 * intersection + smooth) / (union + smooth)
         return dice
 
     def normalized_surface_dice(self, pred, target, tolerance_mm):
-        """Normalized Surface Dice with tolerance"""
+        """
+        Normalized Surface Dice with tolerance
+
+        Edge cases:
+        - Both empty: Return NaN (no surface to compare)
+        - One empty: Return 0.0 (complete mismatch)
+        """
         pred_np = (pred > 0.5).float().cpu().numpy()[0, 0]
         target_np = (target > 0.5).float().cpu().numpy()[0, 0]
+
+        # Check if both empty
+        if pred_np.sum() < 1e-6 and target_np.sum() < 1e-6:
+            return torch.tensor(float('nan'))
 
         pred_surface = self._extract_surface(pred_np)
         target_surface = self._extract_surface(target_np)
@@ -215,9 +253,19 @@ class ROIMetrics:
         return torch.tensor(nsd)
 
     def hausdorff_95(self, pred, target):
-        """95th percentile Hausdorff Distance"""
+        """
+        95th percentile Hausdorff Distance
+
+        Edge cases:
+        - Both empty: Return NaN (no surface to compare)
+        - One empty: Return 100.0 mm (worst possible, complete mismatch)
+        """
         pred_np = (pred > 0.5).float().cpu().numpy()[0, 0]
         target_np = (target > 0.5).float().cpu().numpy()[0, 0]
+
+        # Check if both empty
+        if pred_np.sum() < 1e-6 and target_np.sum() < 1e-6:
+            return torch.tensor(float('nan'))
 
         pred_surface = self._extract_surface(pred_np)
         target_surface = self._extract_surface(target_np)
