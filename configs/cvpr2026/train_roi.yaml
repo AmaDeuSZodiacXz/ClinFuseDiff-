@@ -163,8 +163,8 @@ disease_presets:
   # Stroke (default for APIS): balanced
   stroke:
     alpha: 1.0
-    beta: 0.8
-    gamma: 2.5  # High lesion weight for infarct
+    beta: 1.2   # Increased from 0.8 to prioritize bone/CT information
+    gamma: 3.0  # Increased from 2.5 for better small lesion detection
     description: "Ischemic lesion and tissue viability"
 
   # Default (balanced)

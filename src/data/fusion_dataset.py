@@ -132,11 +132,20 @@ class ImageFusionDataset(Dataset):
         print(f"Validated: {len(self.cases)} cases with complete data")
 
     def _normalize_ct(self, ct_volume: np.ndarray) -> np.ndarray:
-        """Normalize CT intensity (Hounsfield Units)"""
-        # Clip to typical HU range
-        ct_volume = np.clip(ct_volume, -1000, 3000)
-        # Scale to [0, 1]
-        ct_volume = (ct_volume + 1000) / 4000.0
+        """Normalize CT intensity (Hounsfield Units) - Z-score like MRI"""
+        # Clip outliers to typical HU range
+        ct_volume = np.clip(ct_volume, -1000, 1000)
+
+        # Z-score normalization (same as MRI for consistent scale)
+        mask = ct_volume > -900  # Exclude air/background
+        if mask.sum() > 0:
+            mean = ct_volume[mask].mean()
+            std = ct_volume[mask].std()
+            if std > 0:
+                ct_volume = (ct_volume - mean) / std
+            else:
+                ct_volume = ct_volume - mean
+
         return ct_volume.astype(np.float32)
 
     def _normalize_mri(self, mri_volume: np.ndarray) -> np.ndarray:
