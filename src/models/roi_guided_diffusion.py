@@ -367,6 +367,10 @@ class ROIGuidedDiffusion(nn.Module):
             if return_intermediates:
                 intermediates.append(x_t.cpu())
 
+        # Clamp output to reasonable range (match input data range)
+        # Assume inputs are normalized to roughly [-2, 5] based on observed ranges
+        x_t = torch.clamp(x_t, -3.0, 5.0)
+
         # Return final fused image (line 12)
         if return_intermediates:
             return x_t, intermediates
