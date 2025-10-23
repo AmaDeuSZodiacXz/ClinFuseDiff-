@@ -363,6 +363,9 @@ class FusionTrainer:
             import time
             t_start = time.time()
 
+            sampling_steps = self.config.get('model', {}).get('diffusion', {}).get('sampling_timesteps', 20)
+            verbose_sampling = self.config.get('experiment', {}).get('verbose_sampling', False)
+
             fused = self.model.sample(
                 mri=mri,
                 ct=ct,
@@ -370,8 +373,8 @@ class FusionTrainer:
                 bone_mask=bone_mask,
                 lesion_mask=lesion_mask,
                 lesion_head=self.lesion_head,
-                sampling_timesteps=20,  # DDIM 20 steps
-                verbose=True  # Show per-step progress
+                sampling_timesteps=sampling_steps,
+                verbose=verbose_sampling
             )
 
             t_elapsed = time.time() - t_start
@@ -389,15 +392,19 @@ class FusionTrainer:
             print(f"  Computing metrics...")
 
             # Compute metrics
-            # For now, use GT lesion mask as "prediction" to get upper bound metrics
-            # TODO: Add lesion segmentation head for true lesion detection
+            # Use lesion metrics only when a lesion head provides predictions.
+            lesion_pred_eval = None
+            if self.lesion_head is not None and lesion_mask is not None:
+                with torch.no_grad():
+                    lesion_pred_eval = self.lesion_head(fused)
+
             batch_metrics = self.roi_metrics.compute_all_metrics(
                 fused=fused,
                 mri=mri,
                 ct=ct,
                 brain_mask=brain_mask,
                 bone_mask=bone_mask,
-                lesion_pred=lesion_mask,  # Using GT as upper bound
+                lesion_pred=lesion_pred_eval,
                 lesion_gt=lesion_mask
             )
             all_metrics.append(batch_metrics)

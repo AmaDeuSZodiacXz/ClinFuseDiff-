@@ -154,30 +154,36 @@ class ROIGuidedDiffusion(nn.Module):
 
     def _masked_ssim(self, pred, target, mask, window_size=11):
         """
-        Compute SSIM within ROI mask
+        Compute SSIM within ROI mask (correct masking).
 
-        Simple SSIM implementation for 3D volumes
+        Notes:
+        - Use only ROI voxels for statistics (divide by mask.sum()).
+        - Previous version averaged over the whole volume → gradients vanished
+          and guidance became ineffective, yielding noisy samples.
         """
-        # Apply mask
-        pred_masked = pred * mask
-        target_masked = target * mask
+        # Ensure same shape
+        assert pred.shape == target.shape == mask.shape, "Shapes must match"
 
-        # Constants for stability
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
+        # ROI voxel count
+        n = mask.sum() + 1e-8
 
-        # Compute means
-        mu_pred = pred_masked.mean()
-        mu_target = target_masked.mean()
+        # Means on ROI
+        mu_pred = (pred * mask).sum() / n
+        mu_target = (target * mask).sum() / n
 
-        # Compute variances and covariance
-        sigma_pred = ((pred_masked - mu_pred) ** 2).mean()
-        sigma_target = ((target_masked - mu_target) ** 2).mean()
-        sigma_pred_target = ((pred_masked - mu_pred) * (target_masked - mu_target)).mean()
+        # Centered values only inside ROI
+        pred_c = (pred - mu_pred) * mask
+        target_c = (target - mu_target) * mask
 
-        # SSIM formula
+        # Variances and covariance on ROI
+        sigma_pred = (pred_c ** 2).sum() / n
+        sigma_target = (target_c ** 2).sum() / n
+        sigma_pred_target = (pred_c * target_c).sum() / n
+
+        # SSIM (scalar)
+        C1, C2 = 0.01 ** 2, 0.03 ** 2
         ssim = ((2 * mu_pred * mu_target + C1) * (2 * sigma_pred_target + C2)) / \
-               ((mu_pred ** 2 + mu_target ** 2 + C1) * (sigma_pred + sigma_target + C2))
+               ((mu_pred ** 2 + mu_target ** 2 + C1) * (sigma_pred + sigma_target + C2) + 1e-8)
 
         return ssim.clamp(0, 1)
 
@@ -334,7 +340,7 @@ class ROIGuidedDiffusion(nn.Module):
 
                 # Compute gradient (line 10: -η∇L_ROI)
                 if roi_loss.requires_grad:
-                    roi_grad = torch.autograd.grad(roi_loss, x_t_grad)[0]
+                    roi_grad = torch.autograd.grad(roi_loss, x_t_grad, retain_graph=False)[0]
                 else:
                     roi_grad = torch.zeros_like(x_t_grad)
 
@@ -345,7 +351,7 @@ class ROIGuidedDiffusion(nn.Module):
                     # Simple uncertainty loss: minimize variance
                     uncert_loss = uncertainty.mean()
                     if uncert_loss.requires_grad:
-                        uncert_grad = torch.autograd.grad(uncert_loss, x_t_grad)[0]
+                        uncert_grad = torch.autograd.grad(uncert_loss, x_t_grad, retain_graph=False)[0]
 
             # Standard DDPM update
             beta_t = self.betas[t]
@@ -361,8 +367,22 @@ class ROIGuidedDiffusion(nn.Module):
             else:
                 x_t = x_t_mean
 
-            # Apply guided gradients (line 10)
-            x_t = x_t - self.eta * roi_grad - self.eta_u * uncert_grad
+            # Apply guided gradients (line 10) with simple normalization to
+            # stabilize scale across cases
+            def _norm(g):
+                std = g.std()
+                return g / (std + 1e-8)
+
+            if torch.isfinite(roi_grad).all():
+                roi_adj = _norm(roi_grad)
+            else:
+                roi_adj = torch.zeros_like(roi_grad)
+            if torch.isfinite(uncert_grad).all():
+                uncert_adj = _norm(uncert_grad)
+            else:
+                uncert_adj = torch.zeros_like(uncert_grad)
+
+            x_t = x_t - self.eta * roi_adj - self.eta_u * uncert_adj
 
             if return_intermediates:
                 intermediates.append(x_t.cpu())

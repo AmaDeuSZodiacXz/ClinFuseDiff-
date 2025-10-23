@@ -43,7 +43,7 @@ model:
   diffusion:
     num_timesteps: 1000
     beta_schedule: "cosine"  # Cosine schedule (better for images)
-    sampling_timesteps: 20  # DDIM sampling (20 steps = faster validation)
+    sampling_timesteps: 100  # Increase steps early for clearer samples
 
   # Lesion segmentation head (frozen pretrained)
   lesion_head:
@@ -66,7 +66,7 @@ roi_guidance:
     hd95: 0.5     # λ3: Hausdorff Distance 95th percentile
 
   # Guidance strengths during sampling
-  eta: 0.1        # ROI loss guidance strength
+  eta: 0.2        # Stronger guidance for early epochs
   eta_u: 0.05     # Uncertainty guidance strength
 
   # NSD tolerance
@@ -211,7 +211,7 @@ evaluation:
 # Checkpointing
 checkpoint:
   save_best: true
-  metric: "lesion/nsd@2mm"  # Primary metric for best model
+  metric: "brain_ssim"  # Use brain SSIM until lesion head is enabled
   mode: "max"  # Higher is better
   save_last: true
   save_top_k: 3
