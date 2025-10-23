@@ -20,84 +20,64 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
+# Data files
+*.nii.gz
+*.nii
+*.dcm
+*.h5
+*.hdf5
+data/
+work/
+logs/
+outputs/
+results/
 
-# IDEs
+# Models
+*.pth
+*.ckpt
+*.pt
+checkpoints/
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# Data (exclude data directories but not src/data/)
-/data/
-/datasets/
-*.h5
-*.hdf5
-*.npy
-*.npz
-*.pkl
-*.pickle
-
-# Medical imaging
-*.nii
-*.nii.gz
-*.dcm
-*.mha
-*.mhd
-
-# Models and checkpoints
-checkpoints/
-*.pth
-*.pt
-*.ckpt
-*.safetensors
-
-# Logs and outputs
-logs/
-outputs/
-runs/
-wandb/
-*.log
-
-# Experiments
-experiments/results/
-experiments/outputs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-
-# Documentation builds
-docs/_build/
-
 # Environment
 .env
-.env.local
+.venv
+env/
+venv/
+ENV/
 
-# Work directory
-/work/
+# Secrets
+*.token
+*.key
+upload_*.py
 
-# Dataset archives
-*.zip
-SynthRAD_data/
-Miniconda3-*.sh
-
-# Temporary demo/test files
-demo_*.py
-test_*.py
-convert_splits.py
-start_workflow.py
+# Documentation (temporary/internal)
+*_STATUS.md
+*_SUMMARY.md
+*_GUIDE.md
+*_COMPLETE.md
+*_EXECUTION*.md
+WORKFLOW_*.md
+QUICK_START.md
+ERROR_*.md
+HOW_TO_*.md
+RIRE_*.md
+IMPLEMENTATION_*.md
+PROGRESS_*.md
+START_HERE.md
+agent.md
+README.md.backup
+👉_START_HERE_👈.txt
+SETUP_WINDOWS.md
+DATASET_DOWNLOAD_GUIDE.md
