@@ -31,10 +31,10 @@ model:
     in_channels: 1  # Fused image (single channel)
     out_channels: 1
     cond_channels: 512  # MRI (256) + CT (256) conditioning
-    base_channels: 64  # Restored for A100 GPU capacity
-    channel_mult: [1, 2, 4]  # 3 levels for better feature extraction
+    base_channels: 64  # Optimized for A100 GPU
+    channel_mult: [1, 2]  # Only 2 levels for thin volumes (26 slices)
     num_res_blocks: 2  # Two residual blocks per level
-    attention_resolutions: [8]  # Add attention at 8x8 resolution
+    attention_resolutions: []  # Disable attention for thin volumes
     dropout: 0.1
     use_checkpoint: false  # Gradient checkpointing disabled for speed
 
