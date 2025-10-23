@@ -371,7 +371,7 @@ class FusionTrainer:
             print(f"  Computing metrics...")
 
             # Compute metrics
-            batch_metrics = self.roi_metrics.compute_all(
+            batch_metrics = self.roi_metrics.compute_all_metrics(
                 fused=fused,
                 mri=mri,
                 ct=ct,
@@ -382,7 +382,7 @@ class FusionTrainer:
             )
             all_metrics.append(batch_metrics)
 
-            print(f"  Metrics computed: Dice={batch_metrics.get('lesion/dice', 0):.3f}, SSIM={batch_metrics.get('brain/ssim', 0):.3f}")
+            print(f"  Metrics computed: Dice={batch_metrics.get('lesion_dice', 0):.3f}, SSIM={batch_metrics.get('brain_ssim', 0):.3f}")
             print(f"[Validation {batch_idx+1}/9] Completed in {time.time() - t_start:.1f}s total\n")
 
         # Average metrics
