@@ -1,0 +1,25 @@
+{
+  "total_cases": 60,
+  "cases_with_lesion": 54,
+  "cases_without_lesion": 6,
+  "lesion_volume_stats": {
+    "mean_ml": 10.342092592592591,
+    "median_ml": 2.2435,
+    "std_ml": 15.181365087984053,
+    "min_ml": 0.011,
+    "max_ml": 57.845
+  },
+  "size_distribution": {
+    "small_count": 33,
+    "medium_count": 9,
+    "large_count": 12
+  },
+  "cases_without_lesions": [
+    "train_027",
+    "train_038",
+    "train_048",
+    "train_051",
+    "train_058",
+    "train_059"
+  ]
+}
