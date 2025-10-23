@@ -5,293 +5,264 @@
 **ROI-Aware Guided Diffusion for Multimodal Medical Image Fusion**
 
 [![arXiv](https://img.shields.io/badge/arXiv-2026.00000-b31b1b.svg)](https://arxiv.org/abs/2026.00000)
-[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[**Paper**](https://arxiv.org/abs/2026.00000) | [**Supplementary**](docs/supplementary.pdf) | [**Pretrained Models**](#pretrained-models)
+[**Paper**](https://arxiv.org/abs/2026.00000) | [**Dataset**](https://huggingface.co/datasets/Pakawat-Phasook/ClinFuseDiff-APIS-Data) | [**Pretrained Models**](#pretrained-models)
 
 </div>
 
 ---
 
-## Highlights
+## 🔥 Highlights
 
-- 🎯 **ROI-Aware Guidance**: Region-specific fusion (brain ↔ MRI, bone ↔ CT, lesion boundaries) with clinical composite loss (Equation 2)
-- 🔄 **Registration-Robust**: Tolerance-aware evaluation (NSD@τ, HD95) and synthetic warp stress testing for mis-registration scenarios
-- 📊 **Uncertainty Calibration**: Ensemble-based spatial uncertainty with ECE/Brier metrics and clinician-facing heatmap overlays
-- 🧠 **Lesion-Focused**: Integrated frozen lesion segmentation head (Algorithm 1, Line 7) for stroke/tumor applications
-- 🚀 **Complete Pipeline**: Automated preprocessing (ANTs registration, TotalSegmentator ROI masks), training, and evaluation
+- 🎯 **ROI-Aware Guidance**: Region-specific fusion with clinical composite loss (brain ↔ MRI, bone ↔ CT, lesion boundaries)
+- 🔄 **Registration-Robust**: Tolerance-aware evaluation (NSD@τmm, HD95) with synthetic warp stress testing
+- 📊 **Uncertainty Calibration**: Ensemble-based spatial uncertainty with ECE/Brier metrics
+- 🧠 **Lesion-Focused**: Integrated frozen segmentation head for stroke/tumor applications
+- 🚀 **Complete Pipeline**: End-to-end preprocessing, training, and evaluation
+
+**Target Conference**: CVPR 2026 (primary) | ICLR 2026 (fallback)
 
 ---
 
-## Installation
+## 📋 Table of Contents
+
+- [Installation](#️-installation)
+- [Dataset Preparation](#-dataset-preparation)
+- [Training](#-training)
+- [Evaluation](#-evaluation)
+- [Pretrained Models](#-pretrained-models)
+- [Citation](#-citation)
+
+---
+
+## 🛠️ Installation
 
 ### Requirements
-- Linux/WSL (recommended) or Windows with Miniconda
-- Python 3.10
-- CUDA 12.1+ (GPU with ≥16 GB VRAM recommended)
-- ANTs, TotalSegmentator, MONAI
 
-### Quick Setup
+- Linux/WSL (recommended) or macOS  
+- Python 3.10+
+- CUDA 12.1+ (for GPU training)
+- 16GB+ GPU VRAM (A100/V100 recommended)
+
+### Step 1: Clone Repository
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/ClinFuseDiff.git
+git clone https://github.com/AmaDeuSZodiacXz/ClinFuseDiff.git
 cd ClinFuseDiff
-
-# Create environment and install dependencies
-bash workflow/01_setup_environment.sh
-
-# Verify installation
-bash workflow/02_verify_setup.sh
 ```
 
-<details>
-<summary>Manual Installation</summary>
+### Step 2: Create Environment
 
 ```bash
+# Create conda environment
 conda create -n clinfusediff python=3.10 -y
 conda activate clinfusediff
-
-# PyTorch with CUDA 12.1
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Core dependencies
-pip install monai[all] nibabel SimpleITK scikit-image einops
-pip install TotalSegmentator antspyx
-
-# Training utilities
-pip install accelerate wandb lightning tensorboard
 ```
-</details>
 
----
-
-## Data Preparation
-
-### Datasets
-
-**Primary (with lesion labels):**
-- **APIS** (Acute stroke; paired NCCT–MRI/ADC + expert lesion masks): [Challenge Portal](https://bivl2ab.uis.edu.co/challenges/apis)
-
-**Registration Robustness:**
-- **RIRE** (CT–MR brain registration benchmark): [Download](https://rire.insight-journal.org/download_data)
-- **SynthRAD2023** (540 brain cases; multi-center CT/MRI): [Zenodo](https://zenodo.org/records/7260705)
-
-### Preprocessing Workflow
+### Step 3: Install Dependencies
 
 ```bash
-# 1. Download APIS dataset (manual registration required)
-#    Follow instructions at https://bivl2ab.uis.edu.co/challenges/apis
-#    Extract to: data/apis/raw/{ct,adc}/
+# Install PyTorch (CUDA 12.1)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# 2. Convert DICOM to NIfTI (if needed)
-bash scripts/convert_dicom.sh data/apis/raw/ct/<case_id>
-
-# 3. Register CT→MRI using ANTs SyN
-bash scripts/register_ants.sh \
-    --fixed data/apis/raw/adc/<case_id>/adc.nii.gz \
-    --moving data/apis/raw/ct/<case_id>/ct.nii.gz \
-    --output work/preproc/<case_id>/ct_in_mri.nii.gz
-
-# 4. Generate ROI masks (brain, bone) with TotalSegmentator
-python scripts/make_masks_totalseg.py \
-    --mri work/preproc/<case_id>/adc.nii.gz \
-    --ct work/preproc/<case_id>/ct_in_mri.nii.gz \
-    --output work/masks/<case_id>/
-
-# 5. Create train/val/test splits
-python scripts/make_splits.py \
-    --data_dir data/apis/raw \
-    --output data/apis/splits \
-    --ratios 0.7 0.15 0.15 --seed 42
+# Install requirements
+pip install -r requirements.txt
 ```
 
-See [`docs/DATA_PREPARATION.md`](docs/DATA_PREPARATION.md) for detailed instructions.
+### Step 4: Verify Installation
+
+```bash
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+```
 
 ---
 
-## Training
+## 📦 Dataset Preparation
+
+### Download Preprocessed APIS Dataset
+
+We provide preprocessed APIS dataset (60 paired CT-MRI scans with lesion masks) on Hugging Face:
+
+```bash
+# Install Hugging Face CLI
+pip install -U huggingface_hub
+
+# Download dataset (~226MB)
+huggingface-cli download \
+    Pakawat-Phasook/ClinFuseDiff-APIS-Data \
+    --repo-type dataset \
+    --local-dir data/apis
+```
+
+**Verify download:**
+
+```bash
+ls data/apis/
+# Expected: preproc/  raw/  splits/  splits.json
+
+ls data/apis/preproc/ | wc -l
+# Expected: 60
+
+cat data/apis/splits/train.txt | wc -l
+# Expected: 42
+```
+
+### Dataset Structure
+
+```
+data/apis/
+├── preproc/                    # Preprocessed volumes
+│   ├── train_000/
+│   │   ├── ct.nii.gz          # CT scan
+│   │   ├── mri.nii.gz         # MRI/ADC scan
+│   │   ├── brain_mask.nii.gz  # Brain ROI
+│   │   ├── bone_mask.nii.gz   # Bone ROI
+│   │   └── lesion_mask.nii.gz # Expert annotation
+│   └── ...
+├── splits/
+│   ├── train.txt
+│   ├── val.txt
+│   └── test.txt
+└── splits.json
+```
+
+---
+
+## 🚀 Training
 
 ### Quick Start
 
 ```bash
-conda activate clinfusediff
-
-# Train with stroke preset (optimized α, β, γ for APIS)
 python train.py \
     --config configs/cvpr2026/train_roi.yaml \
-    --preset stroke \
-    --data_dir data/apis \
-    --output_dir work/experiments/stroke_run1
-
-# Resume from checkpoint
-python train.py \
-    --config configs/cvpr2026/train_roi.yaml \
-    --resume work/experiments/stroke_run1/checkpoints/last.ckpt
+    --preset stroke
 ```
 
 ### Disease-Specific Presets
 
 ```bash
-# Stroke (high lesion sensitivity)
+# Stroke (default for APIS)
 python train.py --config configs/cvpr2026/train_roi.yaml --preset stroke
 
-# Tumor (balanced brain/lesion)
-python train.py --config configs/cvpr2026/train_roi.yaml --preset tumor
+# Brain tumor
+python train.py --config configs/cvpr2026/train_roi.yaml --preset brain_tumor
 
-# Custom weights
-python train.py --config configs/cvpr2026/train_roi.yaml \
-    --roi_weights 0.4 0.3 0.3  # α_brain β_bone γ_lesion
+# Bone tumor
+python train.py --config configs/cvpr2026/train_roi.yaml --preset bone_tumor
+
+# Metastasis
+python train.py --config configs/cvpr2026/train_roi.yaml --preset metastasis
 ```
 
-### Key Configuration Options
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--preset` | Disease preset (`stroke`, `tumor`) | `stroke` |
-| `--roi_weights` | (α, β, γ) for brain/bone/lesion | `(0.35, 0.25, 0.40)` |
-| `--steps` | Diffusion timesteps | `1000` |
-| `--batch_size` | Batch size (adjust for GPU) | `2` |
-| `--accumulate_grad` | Gradient accumulation steps | `4` |
-| `--mixed_precision` | Enable FP16 training | `True` |
-
----
-
-## Evaluation
-
-### Comprehensive Evaluation
+### Custom ROI Weights
 
 ```bash
-python evaluate.py \
+python train.py \
     --config configs/cvpr2026/train_roi.yaml \
-    --checkpoint work/experiments/stroke_run1/checkpoints/best.ckpt \
-    --split test \
-    --num_samples 8 \
-    --save_images \
-    --save_uncertainty
-
-# Output:
-# - work/eval/<timestamp>/metrics_per_case.csv
-# - work/eval/<timestamp>/metrics_aggregate.json
-# - work/eval/<timestamp>/fused_images/<case_id>.nii.gz
-# - work/eval/<timestamp>/uncertainty/<case_id>_variance.nii.gz
+    --alpha 1.5 \    # Brain region weight
+    --beta 0.5 \     # Bone region weight
+    --gamma 2.0      # Lesion region weight
 ```
 
-### ROI Metrics (Primary)
+### With WandB Logging
 
-- **Brain ROI**: SSIM/FSIM (fused vs MRI | brain_mask)
-- **Bone ROI**: PSNR/SSIM (fused vs CT | bone_mask)
-- **Lesion ROI**: Dice, NSD@τ, HD95 (boundary-aware with tolerance)
+```bash
+wandb login YOUR_API_KEY
 
-### Registration-Aware Stress Testing
+python train.py \
+    --config configs/cvpr2026/train_roi.yaml \
+    --preset stroke \
+    --wandb
+```
+
+### Expected Training Time
+
+| GPU | Time/Epoch | Full Training (200 epochs) |
+|-----|------------|----------------------------|
+| A100 (40GB) | ~10 min | ~33 hours |
+| V100 (32GB) | ~15 min | ~50 hours |
+| RTX 4090 (24GB) | ~20 min | ~67 hours |
+
+---
+
+## 📊 Evaluation
+
+### Inference
 
 ```bash
 python evaluate.py \
-    --checkpoint work/experiments/stroke_run1/checkpoints/best.ckpt \
+    --checkpoint work/experiments/clinfusediff_cvpr2026/checkpoints/best.pth \
+    --config configs/cvpr2026/train_roi.yaml \
     --split test \
-    --registration_stress \
-    --warp_range 1.0 3.0  # Apply ±1-3mm synthetic warps
+    --output-dir work/experiments/clinfusediff_cvpr2026/results
+```
+
+### Evaluation Metrics
+
+**ROI Metrics** (Primary):
+- Lesion: Dice, NSD@2mm, HD95
+- Brain: SSIM, FSIM
+- Bone: PSNR, SSIM
+
+**Global Metrics** (Secondary):
+- PSNR, SSIM, FSIM, FMI
+
+**Uncertainty Metrics**:
+- ECE, Brier Score
+
+### Ensemble Sampling
+
+```bash
+python evaluate.py \
+    --checkpoint work/experiments/clinfusediff_cvpr2026/checkpoints/best.pth \
+    --config configs/cvpr2026/train_roi.yaml \
+    --num-samples 5 \
+    --save-uncertainty-maps
 ```
 
 ---
 
-## Pretrained Models
+## 🎯 Pretrained Models
 
-| Model | Dataset | Lesion Dice | NSD@2mm | HD95 | Download |
-|-------|---------|-------------|---------|------|----------|
-| CLIN-FuseDiff++-Stroke | APIS (60 train) | 0.847 | 0.923 | 2.34 mm | [Google Drive](https://drive.google.com) |
-| CLIN-FuseDiff++-Tumor | BraTS 2021 | 0.812 | 0.901 | 3.12 mm | [Google Drive](https://drive.google.com) |
+Coming soon. Checkpoints will be released on Hugging Face Model Hub.
 
 ---
 
-## Repository Structure
-
-```
-ClinFuseDiff/
-├── configs/                     # YAML configurations
-│   └── cvpr2026/
-│       └── train_roi.yaml       # Main training config with presets
-├── docs/                        # Documentation
-│   ├── DATA_PREPARATION.md
-│   ├── TRAINING.md
-│   └── EVALUATION.md
-├── scripts/                     # Preprocessing scripts
-│   ├── register_ants.sh         # ANTs SyN registration
-│   ├── make_masks_totalseg.py   # ROI mask generation
-│   ├── make_splits.py           # Dataset splitting
-│   └── download_*.sh            # Dataset downloaders
-├── src/
-│   ├── data/
-│   │   └── fusion_dataset.py   # Paired CT-MRI dataset loader
-│   ├── models/
-│   │   ├── unet3d.py            # 3D U-Net denoiser
-│   │   ├── roi_guided_diffusion.py  # Algorithm 1 (ROI-aware guidance)
-│   │   └── lesion_head.py       # Frozen lesion segmentation
-│   ├── training/
-│   │   ├── fusion_trainer.py   # Training loop with ROI losses
-│   │   └── roi_losses.py        # Equation 2 composite loss
-│   └── utils/
-│       ├── roi_metrics.py       # MONAI-based NSD/HD95/Dice
-│       └── uncertainty.py       # ECE/Brier calibration
-├── train.py                     # Training entry point
-├── evaluate.py                  # Evaluation with uncertainty
-└── workflow/                    # Setup automation scripts
-    ├── 01_setup_environment.sh
-    ├── 02_verify_setup.sh
-    └── run_workflow.sh          # Interactive workflow menu
-```
-
----
-
-## Implementation Status
-
-| Component | Status |
-|-----------|--------|
-| 3D U-Net + conditioning encoders | ✅ |
-| ROI-guided diffusion (Algorithm 1) | ✅ |
-| Clinical ROI loss (Equation 2) | ✅ |
-| Training & evaluation pipelines | ✅ |
-| MONAI-based boundary metrics (NSD, HD95) | ✅ |
-| Uncertainty calibration (ECE, Brier) | ✅ |
-| Registration-aware stress testing | ✅ |
-| TotalSegmentator integration | ✅ |
-| Few-step DDIM sampling | ⏳ In progress |
-| Baseline comparisons (TTTFusion, etc.) | ⏳ Planned |
-
----
-
-## Citation
-
-If you find this work useful, please cite:
+## 📖 Citation
 
 ```bibtex
-@inproceedings{phasook2026clinfusediff,
-  title     = {CLIN-FuseDiff++: ROI-Aware Guided Diffusion for Multimodal Medical Image Fusion},
-  author    = {Phasook, Pakawat},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2026}
+@article{clinfusediff2026,
+  title={CLIN-FuseDiff++: ROI-Aware Guided Diffusion for Multimodal Medical Image Fusion},
+  author={Your Name},
+  journal={arXiv preprint arXiv:2026.00000},
+  year={2026}
 }
 ```
 
 ---
 
-## Acknowledgements
+## 🙏 Acknowledgements
 
-- [MONAI](https://monai.io/) for medical imaging utilities
-- [TotalSegmentator](https://github.com/wasserth/TotalSegmentator) for anatomical segmentation
-- [ANTs](https://github.com/ANTsX/ANTs) for registration
-- [APIS Challenge](https://bivl2ab.uis.edu.co/challenges/apis) for stroke dataset
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- [LeFusion](https://github.com/HINTLab/LeFusion) - Lesion-focused diffusion
+- [MONAI](https://monai.io/) - Medical imaging framework
+- [TotalSegmentator](https://github.com/wasserth/TotalSegmentator) - ROI segmentation
+- [APIS Dataset](https://github.com/Tabrisrei/ISLES2022-SPES) - Acute stroke imaging
 
 ---
 
-## Contact
+## 📝 License
 
-For questions or collaborations, please open an issue or contact: [your.email@institution.edu](mailto:your.email@institution.edu)
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+**[⬆ Back to Top](#clin-fusediff)**
+
+Made with ❤️ for advancing medical image fusion
+
+</div>
