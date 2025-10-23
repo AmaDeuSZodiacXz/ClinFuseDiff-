@@ -31,12 +31,12 @@ model:
     in_channels: 1  # Fused image (single channel)
     out_channels: 1
     cond_channels: 512  # MRI (256) + CT (256) conditioning
-    base_channels: 32  # Reduced from 64 for memory
-    channel_mult: [1, 2]  # Only 2 levels for thin 3D volumes (26→13 slices)
-    num_res_blocks: 1  # One block per level to minimize depth
-    attention_resolutions: []  # Disable attention for simplicity
+    base_channels: 64  # Restored for A100 GPU capacity
+    channel_mult: [1, 2, 4]  # 3 levels for better feature extraction
+    num_res_blocks: 2  # Two residual blocks per level
+    attention_resolutions: [8]  # Add attention at 8x8 resolution
     dropout: 0.1
-    use_checkpoint: false  # Disabled - causes OOM during backward
+    use_checkpoint: false  # Gradient checkpointing disabled for speed
 
   # Diffusion process
   diffusion:
@@ -97,7 +97,7 @@ training:
   weight_decay: 0.00001
   warmup_epochs: 10
   gradient_clip: 1.0
-  mixed_precision: false  # Disabled FP16 due to OOM on large volumes
+  mixed_precision: true  # Enabled for A100 GPU (2-3x speedup)
 
   # Loss weights (L_total = L_diffusion + λ_roi * L_ROI)
   loss_weights:
@@ -119,9 +119,9 @@ data:
   data_dir: "./data/apis/preproc"  # Preprocessed data
   splits_dir: "./data/apis/splits"
 
-  # Image properties
+  # Image properties (match actual preprocessed data)
   spacing: [1.0, 1.0, 1.0]  # Target isotropic spacing (mm)
-  size: [128, 128, 128]     # Target volume size (D, H, W)
+  size: null  # Use original size from data (256×256×26 after preprocessing)
 
   # Data loading
   num_workers: 4

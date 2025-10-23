@@ -24,6 +24,7 @@ from src.models.unet3d import ImageFusionDiffusion
 from src.models.roi_guided_diffusion import ROIGuidedDiffusion
 from src.models.lesion_head import create_lesion_head
 from src.utils.roi_metrics import ROIMetrics
+from src.utils.uncertainty import compute_calibration_metrics
 
 
 def parse_args():
@@ -240,10 +241,9 @@ def evaluate(
         # Generate multiple samples for uncertainty estimation
         fused_samples = []
         for _ in range(num_samples):
-            conditioning = torch.cat([mri, ct], dim=1)
             fused = model.sample(
                 batch_size=ct.shape[0],
-                conditioning=conditioning,
+                shape=(1, *ct.shape[2:]),  # (C, D, H, W)
                 mri=mri,
                 ct=ct,
                 brain_mask=brain_mask,
@@ -281,6 +281,36 @@ def evaluate(
         # Add uncertainty metrics
         batch_metrics['uncertainty/mean'] = fused_std.mean().item()
         batch_metrics['uncertainty/max'] = fused_std.max().item()
+
+        # Compute calibration metrics (ECE, Brier) for lesion region
+        if lesion_mask is not None:
+            # Convert to numpy
+            fused_samples_np = fused_samples.cpu().numpy()  # (num_samples, B, C, D, H, W)
+            lesion_mask_np = lesion_mask.cpu().numpy()  # (B, C, D, H, W)
+
+            # For each case in batch
+            for b in range(ct.shape[0]):
+                # Get samples for this case
+                case_samples = fused_samples_np[:, b, 0]  # (num_samples, D, H, W)
+                case_mask = lesion_mask_np[b, 0]  # (D, H, W)
+
+                # Ground truth: use MRI in lesion region (or average of MRI/CT)
+                case_mri = mri[b, 0].cpu().numpy()  # (D, H, W)
+
+                # Compute calibration metrics
+                try:
+                    calib_metrics = compute_calibration_metrics(
+                        ensemble_samples=case_samples,
+                        ground_truth=case_mri,
+                        mask=case_mask,
+                        n_bins=10
+                    )
+                    batch_metrics['calibration/ece'] = calib_metrics['ece']
+                    batch_metrics['calibration/brier'] = calib_metrics['brier']
+                except Exception as e:
+                    # Skip if calibration fails
+                    batch_metrics['calibration/ece'] = None
+                    batch_metrics['calibration/brier'] = None
 
         # Store results
         for i, cid in enumerate(case_id):
@@ -382,7 +412,10 @@ def save_results(results: dict, output_dir: Path):
         'brain/ssim',
         'brain/fsim',
         'bone/psnr',
-        'bone/ssim'
+        'bone/ssim',
+        'calibration/ece',
+        'calibration/brier',
+        'uncertainty/mean'
     ]
 
     for metric in primary:

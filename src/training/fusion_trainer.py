@@ -19,6 +19,13 @@ from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from tqdm import tqdm
 
+# Optional WandB integration
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+
 # Import models and losses
 from ..models.unet3d import ImageFusionDiffusion
 from ..models.roi_guided_diffusion import ROIGuidedDiffusion
@@ -72,6 +79,17 @@ class FusionTrainer:
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_dir = self.experiment_dir / 'checkpoints'
         self.checkpoint_dir.mkdir(exist_ok=True)
+
+        # Setup WandB logging
+        self.use_wandb = config['experiment'].get('use_wandb', False) and WANDB_AVAILABLE
+        if self.use_wandb:
+            wandb.init(
+                project=config['experiment'].get('wandb_project', 'clinfusediff'),
+                name=config['experiment']['name'],
+                config=config,
+                dir=str(self.experiment_dir)
+            )
+            wandb.watch(self.model, log='all', log_freq=100)
 
         # Setup ROI loss
         roi_config = config['roi_guidance']
@@ -279,6 +297,20 @@ class FusionTrainer:
                 'lr': f"{self.optimizer.param_groups[0]['lr']:.2e}"
             })
 
+            # Log to WandB
+            if self.use_wandb and self.global_step % self.config['experiment'].get('log_interval', 10) == 0:
+                wandb.log({
+                    'train/loss_total': loss_value,
+                    'train/loss_diffusion': loss_diffusion.item(),
+                    'train/loss_roi': loss_roi.item(),
+                    'train/loss_roi_brain': roi_loss_dict.get('brain', 0),
+                    'train/loss_roi_bone': roi_loss_dict.get('bone', 0),
+                    'train/loss_roi_lesion': roi_loss_dict.get('lesion', 0),
+                    'train/learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'train/epoch': epoch,
+                    'train/step': self.global_step
+                })
+
         # Average losses
         for key in epoch_losses:
             epoch_losses[key] /= num_batches
@@ -315,10 +347,9 @@ class FusionTrainer:
                 lesion_mask = lesion_mask.to(self.device)
 
             # Sample fused image using guided diffusion
-            conditioning = torch.cat([mri, ct], dim=1)
             fused = self.model.sample(
                 batch_size=ct.shape[0],
-                conditioning=conditioning,
+                shape=(1, *ct.shape[2:]),  # (C, D, H, W)
                 mri=mri,
                 ct=ct,
                 brain_mask=brain_mask,
@@ -447,6 +478,12 @@ class FusionTrainer:
 
                 # Save checkpoint
                 self.save_checkpoint(epoch, val_metrics, is_best=is_best)
+
+                # Log validation to WandB
+                if self.use_wandb:
+                    wandb_metrics = {f"val/{k}": v for k, v in val_metrics.items()}
+                    wandb_metrics['val/epoch'] = epoch
+                    wandb.log(wandb_metrics)
 
                 # Print validation results
                 print(f"\nEpoch {epoch} Validation:")
