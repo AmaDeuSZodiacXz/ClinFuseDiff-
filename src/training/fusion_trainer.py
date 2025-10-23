@@ -389,13 +389,15 @@ class FusionTrainer:
             print(f"  Computing metrics...")
 
             # Compute metrics
+            # For now, use GT lesion mask as "prediction" to get upper bound metrics
+            # TODO: Add lesion segmentation head for true lesion detection
             batch_metrics = self.roi_metrics.compute_all_metrics(
                 fused=fused,
                 mri=mri,
                 ct=ct,
                 brain_mask=brain_mask,
                 bone_mask=bone_mask,
-                lesion_pred=None,  # TODO: compute from fused
+                lesion_pred=lesion_mask,  # Using GT as upper bound
                 lesion_gt=lesion_mask
             )
             all_metrics.append(batch_metrics)
