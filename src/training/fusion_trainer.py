@@ -330,9 +330,13 @@ class FusionTrainer:
 
         all_metrics = []
 
-        pbar = tqdm(val_loader, desc=f"Validation {epoch}")
+        pbar = tqdm(val_loader, desc=f"Validation {epoch}", leave=True)
 
-        for batch in pbar:
+        for batch_idx, batch in enumerate(pbar):
+            case_id = batch.get('case_id', [f'case_{batch_idx}'])[0]
+
+            print(f"\n[Validation {batch_idx+1}/9] Processing {case_id}...")
+
             ct = batch['ct'].to(self.device)
             mri = batch['mri'].to(self.device)
             brain_mask = batch.get('brain_mask', None)
@@ -347,6 +351,10 @@ class FusionTrainer:
                 lesion_mask = lesion_mask.to(self.device)
 
             # Sample fused image using guided diffusion
+            print(f"  Starting guided sampling (20 DDIM steps)...")
+            import time
+            t_start = time.time()
+
             fused = self.model.sample(
                 mri=mri,
                 ct=ct,
@@ -355,6 +363,10 @@ class FusionTrainer:
                 lesion_mask=lesion_mask,
                 lesion_head=self.lesion_head
             )
+
+            t_elapsed = time.time() - t_start
+            print(f"  Sampling completed in {t_elapsed:.1f}s")
+            print(f"  Computing metrics...")
 
             # Compute metrics
             batch_metrics = self.roi_metrics.compute_all(
@@ -367,6 +379,9 @@ class FusionTrainer:
                 lesion_gt=lesion_mask
             )
             all_metrics.append(batch_metrics)
+
+            print(f"  Metrics computed: Dice={batch_metrics.get('lesion/dice', 0):.3f}, SSIM={batch_metrics.get('brain/ssim', 0):.3f}")
+            print(f"[Validation {batch_idx+1}/9] Completed in {time.time() - t_start:.1f}s total\n")
 
         # Average metrics
         avg_metrics = {}
