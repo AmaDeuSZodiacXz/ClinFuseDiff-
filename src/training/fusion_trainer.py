@@ -352,7 +352,7 @@ class FusionTrainer:
                 ct=ct,
                 brain_mask=brain_mask,
                 bone_mask=bone_mask,
-                lesion_gt=lesion_mask,
+                lesion_mask=lesion_mask,
                 lesion_head=self.lesion_head
             )
 
