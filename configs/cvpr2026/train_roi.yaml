@@ -8,6 +8,7 @@ experiment:
   log_interval: 10
   eval_interval: 1
   save_interval: 5
+  save_vis_every: 10  # Save visualization images every N epochs
   use_wandb: true
   wandb_project: "clinfusediff-cvpr2026"
 

@@ -419,7 +419,32 @@ class FusionTrainer:
         # Average losses (placeholder - would need to compute during validation)
         avg_losses = {k: 0.0 for k in epoch_losses.keys()}
 
+        # Save visualizations every N epochs
+        save_vis_every = self.config['experiment'].get('save_vis_every', 10)
+        if epoch % save_vis_every == 0 or epoch == 0:
+            self._save_validation_visualizations(val_loader, epoch, num_samples=3)
+
         return avg_losses, avg_metrics
+
+    def _save_validation_visualizations(self, val_loader, epoch, num_samples=3):
+        """Save validation visualizations (imported from visualize_fusion_results.py)"""
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+            from visualize_fusion_results import save_validation_samples
+
+            print(f"\n{'='*70}")
+            print(f"Saving {num_samples} validation visualizations for epoch {epoch}...")
+            print(f"{'='*70}")
+
+            save_validation_samples(
+                trainer=self,
+                val_loader=val_loader,
+                epoch=epoch,
+                num_samples=num_samples
+            )
+        except Exception as e:
+            print(f"⚠ Warning: Could not save visualizations: {e}")
 
     def save_checkpoint(self, epoch: int, metrics: Dict[str, float], is_best: bool = False):
         """Save checkpoint"""
