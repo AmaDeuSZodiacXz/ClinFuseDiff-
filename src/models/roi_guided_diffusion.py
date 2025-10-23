@@ -262,7 +262,9 @@ class ROIGuidedDiffusion(nn.Module):
         bone_mask,
         lesion_mask=None,
         lesion_head=None,
-        return_intermediates=False
+        sampling_timesteps=None,
+        return_intermediates=False,
+        verbose=False
     ):
         """
         Algorithm 1: ROI-aware guided reverse diffusion (inference)
@@ -274,13 +276,27 @@ class ROIGuidedDiffusion(nn.Module):
             bone_mask: Bone ROI mask (B, 1, D, H, W)
             lesion_mask: Optional lesion mask (B, 1, D, H, W)
             lesion_head: Optional lesion segmentation network
+            sampling_timesteps: Number of DDIM steps (default: use all timesteps)
             return_intermediates: Return intermediate denoising steps
+            verbose: Print per-step progress
 
         Returns:
             Fused image F (B, 1, D, H, W)
         """
         batch_size = mri.shape[0]
         device = mri.device
+
+        # DDIM: subsample timesteps
+        if sampling_timesteps is None:
+            sampling_timesteps = self.num_timesteps
+
+        # Create DDIM timestep schedule
+        step_size = self.num_timesteps // sampling_timesteps
+        timesteps = list(range(0, self.num_timesteps, step_size))[:sampling_timesteps]
+        timesteps = sorted(timesteps, reverse=True)
+
+        if verbose:
+            print(f"    DDIM sampling: {len(timesteps)} steps (subsampled from {self.num_timesteps})")
 
         # Start from pure noise (line 2)
         x_T = torch.randn_like(mri)
@@ -289,7 +305,10 @@ class ROIGuidedDiffusion(nn.Module):
         intermediates = []
 
         # Reverse diffusion (line 3)
-        for t in reversed(range(self.num_timesteps)):
+        for step_idx, t in enumerate(timesteps):
+            if verbose and step_idx % 5 == 0:
+                print(f"      Step {step_idx+1}/{len(timesteps)} (t={t})")
+
             t_batch = torch.full((batch_size,), t, device=device, dtype=torch.long)
 
             # Predict noise (line 4: F ← denoise(x_t))

@@ -351,7 +351,7 @@ class FusionTrainer:
                 lesion_mask = lesion_mask.to(self.device)
 
             # Sample fused image using guided diffusion
-            print(f"  Starting guided sampling (20 DDIM steps)...")
+            print(f"  Starting guided sampling (DDIM)...")
             import time
             t_start = time.time()
 
@@ -361,11 +361,13 @@ class FusionTrainer:
                 brain_mask=brain_mask,
                 bone_mask=bone_mask,
                 lesion_mask=lesion_mask,
-                lesion_head=self.lesion_head
+                lesion_head=self.lesion_head,
+                sampling_timesteps=20,  # DDIM 20 steps
+                verbose=True  # Show per-step progress
             )
 
             t_elapsed = time.time() - t_start
-            print(f"  Sampling completed in {t_elapsed:.1f}s")
+            print(f"  ✓ Sampling completed in {t_elapsed:.1f}s")
             print(f"  Computing metrics...")
 
             # Compute metrics
