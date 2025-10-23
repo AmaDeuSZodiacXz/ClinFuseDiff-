@@ -39,9 +39,16 @@ class DoubleConv3D(nn.Module):
             nn.GroupNorm(8, out_channels),
         )
 
+        # Projection for residual when channels don't match
+        if self.residual and in_channels != out_channels:
+            self.residual_proj = nn.Conv3d(in_channels, out_channels, kernel_size=1, bias=False)
+        else:
+            self.residual_proj = None
+
     def forward(self, x):
         if self.residual:
-            return nn.functional.gelu(x + self.double_conv(x))
+            residual = x if self.residual_proj is None else self.residual_proj(x)
+            return nn.functional.gelu(residual + self.double_conv(x))
         else:
             return self.double_conv(x)
 
@@ -216,6 +223,9 @@ class UNet3D(nn.Module):
         Returns:
             Predicted noise (batch_size, 1, D, H, W)
         """
+        # Save input shape for final upsampling
+        x_input_shape = x.shape[2:]  # (D, H, W)
+
         # Embed time
         t_emb = self.time_mlp(t)  # (B, time_emb_dim)
 
@@ -260,7 +270,15 @@ class UNet3D(nn.Module):
             x = up(x, skip)
 
         # Output
-        return self.outc(x)
+        x = self.outc(x)
+
+        # Upsample to match input spatial dimensions if needed
+        if x.shape[2:] != x_input_shape:
+            x = torch.nn.functional.interpolate(
+                x, size=x_input_shape, mode='trilinear', align_corners=True
+            )
+
+        return x
 
 
 class ConditionalEncoder(nn.Module):
@@ -312,7 +330,10 @@ class ImageFusionDiffusion(nn.Module):
         image_channels=1,
         cond_dim=256,
         unet_base_channels=64,
-        time_emb_dim=256
+        time_emb_dim=256,
+        channel_multipliers=(1, 2, 4),  # Reduced for thin 3D volumes
+        attention_resolutions=(8,),
+        num_res_blocks=2
     ):
         super().__init__()
 
@@ -326,7 +347,10 @@ class ImageFusionDiffusion(nn.Module):
             out_channels=image_channels,
             cond_channels=cond_dim * 2,  # MRI + CT
             base_channels=unet_base_channels,
-            time_emb_dim=time_emb_dim
+            time_emb_dim=time_emb_dim,
+            channel_multipliers=channel_multipliers,
+            attention_resolutions=attention_resolutions,
+            num_res_blocks=num_res_blocks
         )
 
     def encode_condition(self, mri=None, ct=None):

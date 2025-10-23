@@ -1,290 +1,76 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This brief keeps coding agents aligned with the current ClinFuseDiff roadmap.
 
-## Project Overview
+---
 
-ClinFuseDiff is a research project implementing **Diffusion-Based Test-Time Training for Robust Multimodal Clinical Data Fusion**. The project combines conditional diffusion models with test-time training (TTT) to enable robust fusion of multimodal clinical data (MRI, CT, PET, clinical features) that adapts to missing modalities at test time.
+## Project Snapshot (2025-10-21)
+- **Scope**: Diffusion-based multimodal **image fusion** (MRI + CT → fused volume) with ROI-aware guidance, registration robustness, and calibrated uncertainty, targeting CVPR 2026 (primary) with ICLR 2026 as fallback.
+- **Status**: ~60 % implementation complete. Core architecture, ROI guidance, lesion head, training/evaluation scripts, and documentation are all in place (`PROGRESS_UPDATE.md:3-58`). Remaining work centers on data acquisition, registration-aware augmentation, uncertainty calibration polish, and experiments.
+- **Orientation**: Start with `👉_START_HERE_👈.txt`, `START_HERE.md`, `QUICKSTART_CVPR2026.md`, and `agent.md` for the operative plan, dataset priorities, and open questions.
 
-**Key Innovation**: Unlike traditional fusion methods that fail when trained modality combinations don't match test combinations, ClinFuseDiff uses diffusion models to generate robust fused representations and adapts at test-time through self-supervised learning.
-
-**Target**: ICLR 2026 submission
+---
 
 ## Architecture Overview
 
-### Three-Stage Pipeline
+### Conditioning & Denoiser (`src/models`)
+- `unet3d.py`: 3D UNet denoiser with timestep embeddings, cross-attention blocks, and lightweight conditioning encoders for MRI/CT.
+- `roi_guided_diffusion.py`: Implements Algorithm 1 (CVPR proposal) — ROI-aware reverse diffusion with gradient guidance terms for brain, bone, and lesion regions, plus hooks for uncertainty-modulated step sizes.
+- `lesion_head.py`: Pluggable lesion segmentation head (simple UNet + pretrained weights support) used inline at sampling step 7 (`Ŝ ← LesionHead(F)`).
 
-1. **Encoding Stage** (`src/models/encoders.py`)
-   - `ImageEncoder`: ResNet50-based encoder for 3D medical images (CT/MRI/PET)
-   - `ClinicalEncoder`: MLP-based encoder for tabular clinical data
-   - `MultiModalEncoder`: Wrapper managing multiple modality-specific encoders
-   - Each modality is encoded independently to fixed-dimension feature vectors
+### Training & Losses (`src/training`)
+- `fusion_trainer.py`: Full training loop for image-to-image diffusion with mixed precision, gradient accumulation, schedulers, checkpointing, and ROI metric tracking.
+- `roi_losses.py`: Equation 2 composite ROI loss  
+  `L_roi = α·(1 - SSIM(F, MRI|M_brain)) + β·(1 - SSIM(F, CT|M_bone)) + γ·(λ₁ Dice + λ₂ NSD_τ + λ₃ HD95)`  
+  ready for disease-specific presets and used both during training and guided sampling.
 
-2. **Fusion Stage** (`src/models/fusion.py`)
-   - **Two fusion approaches**:
-     - `AttentionFusion`: Baseline using multi-head attention across modalities
-     - `DiffusionFusion`: Main contribution using conditional diffusion to generate fused representations
-   - Fusion is conditioned on available modalities (handles missing data)
-   - `DiffusionFusion` learns to denoise from random noise to fused representation, conditioned on available modality features
+### Evaluation & Metrics
+- `evaluate.py`: Batch inference with ensemble sampling for uncertainty, ROI/global metrics, CSV/JSON exports, and optional fused-image/uncertainty dumps.
+- `src/utils/roi_metrics.py`: Implements ROI-first scorecard (Dice/NSD/HD95, SSIM/FSIM, PSNR) plus calibration metrics (ECE, Brier).
 
-3. **Prediction Stage** (`src/models/fusion.py`)
-   - MLP prediction head for downstream task (survival, diagnosis, etc.)
-   - Takes fused representation as input
+### Config & Entrypoints
+- `configs/cvpr2026/train_roi.yaml`: Canonical training configuration (sampling steps, ROI weights, presets, augmentation flags).
+- `train.py`: CLI for training with preset overrides, resume, and WandB integration.
+- `evaluate.py`: See above. All commands expect preprocessed data and ROI masks as described in the workflow docs.
 
-### Diffusion Model Architecture (`src/models/diffusion.py`)
+---
 
-- `GaussianDiffusion`: Implements forward diffusion (adding noise) and reverse diffusion (denoising)
-- `DiffusionTransformer`: Transformer-based denoising network
-  - Input: noisy fused feature + timestep + conditioning (from available modalities)
-  - Output: predicted noise
-- Supports configurable noise schedules: linear, cosine
-- Training: Learn to predict noise at random timesteps
-- Inference: Sample by iteratively denoising from pure noise
+## Data & Preprocessing Pipeline
+- **Primary dataset**: APIS (paired NCCT + MRI/ADC with expert lesion masks). Manual download after challenge registration (see `docs/DATASET_SETUP.md` and `QUICKSTART_CVPR2026.md`).
+- **Registration robustness**: SynthRAD2023 (180 multi-center brain CT-MRI pairs) for registration tolerance stress testing (see `docs/SYNTHRAD_DATASET.md`).
+- **Scripts** (`scripts/`):
+  - `register_ants.sh`: Wraps ANTs SyN registration (CT→MRI).
+  - `make_masks_totalseg.py`: Runs TotalSegmentator to produce brain/bone ROI masks.
+  - `make_splits.py`: Deterministic train/val/test splits.
+  - `setup_env.sh`, `download_*.sh`: Environment/dataset automation.
+- **Dataset loader**: `src/data/fusion_dataset.py` expects preprocessed volumes in a consistent directory layout (`data/<dataset>/preproc/<case_id>/…`) with accompanying ROI masks.
 
-### Test-Time Training (TTT) - TO BE IMPLEMENTED
+---
 
-The TTT module will perform per-sample adaptation at test time using three self-supervised objectives:
-1. **Reconstruction loss**: Reconstruct available modality features from fused representation
-2. **Contrastive loss**: Align features across available modalities
-3. **Diffusion denoising loss**: Improve diffusion model on test sample
+## Current Gaps & Priorities
+1. **Environment/data bring-up**: Run `bash workflow/01_setup_environment.sh`, download APIS, and preprocess initial cases (registration + masks) to unblock training.
+2. **Registration-aware robustness**: Implement jitter/warp augmentation and tolerance-aware evaluation harness per Proposal §3.3.
+3. **Uncertainty calibration**: Validate ensemble-based uncertainty, finalize ECE/Brier computation, and add clinician-facing visualization overlays (Proposal §3.4).
+4. **Efficiency**: Integrate DDIM/few-step sampling and score distillation (Proposal §3.5) once baseline fusion is stable.
+5. **Experiments**: Establish baselines (e.g., deterministic fusion, TTTFusion), ablation matrix, and documentation for CVPR results.
 
-This allows the model to adapt to novel modality combinations and individual patient characteristics.
+Consult `agent.md` for detailed open questions and LeFusion reference insights.
 
-## Data Pipeline Architecture
+---
 
-### Dataset Structure (`src/data/datasets.py`)
+## Development Guidelines
+- Follow the ROI-centric workflow: data preprocessing → ROI mask generation → training → evaluation. Log every transform (registration matrices, resampling details) under `work/`.
+- Use the provided configs rather than hardcoding hyperparameters. Introduce new settings through YAML + CLI flags when needed.
+- Maintain ROI metric focus; any new modules should expose brain/bone/lesion behavior explicitly.
+- Reuse MONAI utilities for boundary metrics (NSD, HD95) to stay consistent with clinical tolerance definitions.
+- Before large changes, sync with the latest status docs (`PROGRESS_UPDATE.md`, `CURRENT_STATUS.md`) to avoid reviving deprecated TTT feature-level code.
 
-Two main dataset classes:
-- `BrainTumorDataset`: Generic loader for custom brain tumor datasets
-- `BraTSDataset`: Specialized loader for BraTS challenge format
+---
 
-**Key features**:
-- Automatic modality detection (checks which files exist per patient)
-- Missing modality simulation during training (`missing_modality_prob`)
-- Returns dict with `modality_data`, `available_modalities`, `target`
-- Supports caching of preprocessed data for efficiency
+### Quick Start for New Agents
+1. Read `👉_START_HERE_👈.txt` and `START_HERE.md` to confirm environment expectations (Miniconda/PyTorch, TotalSegmentator, ANTs).
+2. Review `QUICKSTART_CVPR2026.md` for the end-to-end workflow.
+3. Check `PROGRESS_UPDATE.md` for milestones and `agent.md` for proposal-aligned context.
+4. Coordinate with the active work log before modifying configs or scripts; document notable decisions in `PROGRESS_UPDATE.md` or a new progress note.
 
-**Expected directory structure**:
-```
-data/
-  patient_001/
-    mri_t1.nii.gz, mri_t2.nii.gz, ct.nii.gz, etc.
-  patient_002/
-    ...
-  clinical_data.csv
-```
-
-### Preprocessing Pipeline (`src/data/segmentation.py`)
-
-`BrainSegmentationPreprocessor` provides:
-1. **TotalSegmentator integration**: Automatic brain structure segmentation
-2. **Resampling**: To consistent voxel spacing (default 1mm³)
-3. **Resizing**: To target dimensions (default 128×128×128)
-4. **Normalization**: Percentile-based intensity normalization
-5. **Optional skull stripping**: Using segmentation masks
-6. **Caching**: Saves preprocessed data to avoid recomputation
-
-### Data Augmentation (`src/data/transforms.py`)
-
-`MultiModalCompose` ensures **consistent transforms across modalities** (important for maintaining spatial correspondence):
-- All imaging modalities receive same random transform (same flip, rotation, etc.)
-- Clinical data is not transformed
-- Uses fixed random seed per sample to ensure consistency
-
-## Configuration System
-
-All hyperparameters are in `configs/default_config.yaml`:
-- Model architecture params (encoder dims, diffusion timesteps, fusion dims)
-- Training params (batch size, learning rate, loss weights)
-- TTT params (num steps, learning rate, objectives)
-- Data params (splits, missing modality probabilities)
-
-When implementing training scripts, use this config system rather than hardcoding values.
-
-## Development Commands
-
-### Testing Data Pipeline
-```bash
-# Test dataset loading and TotalSegmentator integration
-python examples/test_data_pipeline.py
-```
-
-### Environment Setup
-```bash
-# Create environment
-conda create -n clinfusediff python=3.9
-conda activate clinfusediff
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install TotalSegmentator (for brain segmentation)
-pip install TotalSegmentator
-```
-
-### Running TotalSegmentator (standalone)
-```bash
-# Segment brain CT
-TotalSegmentator -i brain_ct.nii.gz -o output/ --task brain_structures
-
-# Segment brain MRI
-TotalSegmentator -i brain_mri.nii.gz -o output/ --task total_mr
-
-# Fast mode (less accurate but faster)
-TotalSegmentator -i image.nii.gz -o output/ --fast
-```
-
-## Key Implementation Patterns
-
-### 1. Handling Missing Modalities
-
-When loading data:
-```python
-# Dataset automatically detects available modalities
-sample = dataset[idx]
-available_mods = sample['available_modalities']  # e.g., ['mri_t1', 'clinical']
-modality_data = sample['modality_data']  # dict with available modalities only
-```
-
-When passing to model:
-```python
-# Model adapts fusion based on available modalities
-outputs = model(modality_inputs, available_modalities=['mri_t1', 'ct'])
-```
-
-### 2. Diffusion Training vs. Sampling
-
-**Training mode** (`mode='train'`):
-- Computes diffusion loss (predicting noise)
-- Uses average of projected features as "ground truth" fused representation
-
-**Sampling mode** (`mode='sample'`):
-- Generates fused representation through reverse diffusion
-- Starts from random noise, iteratively denoises
-
-### 3. Encoder Configuration
-
-When creating encoders, use modality configs dict:
-```python
-modality_configs = {
-    'mri_t1': {'type': 'image', 'in_channels': 1, 'feat_dim': 2048},
-    'ct': {'type': 'image', 'in_channels': 1, 'feat_dim': 2048},
-    'clinical': {'type': 'clinical', 'input_dim': 50, 'feat_dim': 1024}
-}
-encoder = MultiModalEncoder(modality_configs)
-```
-
-### 4. Data Caching Strategy
-
-Preprocessing 3D medical images is expensive. Always use caching:
-```python
-dataset = BrainTumorDataset(
-    cache_dir='data/cache',  # Saves preprocessed .npy files
-    use_preprocessing=True
-)
-```
-
-## Current Implementation Status
-
-**✅ Complete**:
-- Model architecture (encoders, diffusion, fusion)
-- Data pipeline (datasets, preprocessing, augmentation)
-- TotalSegmentator integration
-- Configuration system
-
-**🚧 TODO** (next priorities):
-1. Training framework (`src/training/trainer.py`)
-   - Loss computation (reconstruction, contrastive, diffusion, prediction)
-   - Training loop with validation
-   - Checkpoint management
-
-2. Test-Time Training (`src/training/ttt.py`)
-   - Per-sample adaptation
-   - Self-supervised objectives
-   - Efficient gradient updates
-
-3. Training script (`train.py`)
-   - Argument parsing
-   - Config loading
-   - Logging setup
-
-See `IMPLEMENTATION_STATUS.md` for detailed task breakdown.
-
-## Important Notes for Development
-
-### Medical Image Conventions
-- **Format**: NIfTI (.nii or .nii.gz) - standard for medical imaging
-- **Orientation**: Images may have different orientations (RAS, LPS, etc.)
-- **Spacing**: Voxel spacing varies across scans (needs resampling)
-- **Intensity**: No standard range (CT: Hounsfield units, MRI: arbitrary)
-
-### Modality Naming Conventions
-- `mri_t1`, `mri_t1ce`, `mri_t2`, `mri_flair`: MRI sequences
-- `ct`: Computed Tomography
-- `pet`: Positron Emission Tomography
-- `clinical`: Tabular clinical features
-
-### Loss Function Design (for implementation)
-Total loss should be weighted combination:
-```
-L_total = λ_pred * L_pred + λ_diff * L_diff + λ_recon * L_recon + λ_contra * L_contra
-```
-Where:
-- `L_pred`: Prediction loss (cross-entropy or MSE for survival)
-- `L_diff`: Diffusion denoising loss
-- `L_recon`: Reconstruction loss (encoder outputs → decoder → reconstruct inputs)
-- `L_contra`: Contrastive loss (align features across modalities)
-
-Loss weights are in `configs/default_config.yaml`.
-
-### GPU Memory Management
-3D medical images are memory-intensive:
-- Use smaller batch sizes (4-8 typical)
-- Use gradient accumulation if needed
-- Enable mixed precision training (AMP)
-- Use gradient checkpointing for diffusion model
-
-### Reproducibility
-- All random seeds should respect `config.experiment.seed`
-- Set seeds for: numpy, torch, random, dataloader workers
-- Deterministic mode for PyTorch operations
-
-## Dataset Resources
-
-**Recommended datasets**:
-- BraTS (Brain Tumor Segmentation): https://www.med.upenn.edu/cbica/brats/
-- TCIA Brain Collections: https://www.cancerimagingarchive.net/
-
-**Setup guide**: See `docs/DATASET_SETUP.md` for detailed instructions on:
-- Directory structure requirements
-- Clinical data CSV format
-- TotalSegmentator usage
-- Data preprocessing pipeline
-
-## Research Context
-
-This work builds on **TTTFusion** (see `TTTFusion.pdf`), extending it with:
-1. Diffusion-based fusion (vs. deterministic fusion)
-2. Feature-level modality imputation capability
-3. Enhanced test-time adaptation with diffusion objective
-
-The goal is to show that diffusion improves robustness to missing modalities compared to deterministic fusion methods.
-
-## Git Workflow Notes
-
-- `.gitignore` excludes `/data/` and `/datasets/` (actual data files)
-- `.gitignore` excludes model checkpoints (`.pth`, `.pt`, `.ckpt`)
-- `.gitignore` excludes medical images (`.nii`, `.nii.gz`)
-- Source code in `src/` is tracked
-- Use meaningful commit messages with context
-
-## When Implementing Training
-
-Key files to create:
-1. `src/training/trainer.py`: Main training logic
-2. `src/training/ttt.py`: Test-time adaptation
-3. `src/training/evaluator.py`: Evaluation metrics
-4. `src/utils/metrics.py`: Metric calculations
-5. `train.py`: Entry point script
-
-Follow patterns from existing model code (e.g., using configs, returning dicts with named outputs).
+Good luck, and keep the ROI guidance front and centre. 🚀

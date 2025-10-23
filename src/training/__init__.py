@@ -1,5 +1,6 @@
 """Training and evaluation modules"""
 
-from .trainer import *
-from .ttt import *
-from .evaluator import *
+from .fusion_trainer import FusionTrainer
+from .roi_losses import *
+
+__all__ = ['FusionTrainer']

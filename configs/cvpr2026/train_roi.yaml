@@ -1,0 +1,216 @@
+# CVPR 2026 CLIN-FuseDiff++ Training Configuration
+# ROI-Aware Guided Diffusion for Medical Image Fusion
+
+experiment:
+  name: "clinfusediff_cvpr2026"
+  seed: 42
+  save_dir: "./work/experiments"
+  log_interval: 10
+  eval_interval: 1
+  save_interval: 5
+  use_wandb: true
+  wandb_project: "clinfusediff-cvpr2026"
+
+# Model architecture (image-level diffusion)
+model:
+  type: "image_fusion"  # image-level fusion (not feature-level)
+
+  # Lightweight conditional encoders for MRI/CT
+  conditional_encoder:
+    mri_encoder:
+      type: "resnet18"  # Lightweight encoder
+      out_channels: 256
+      pretrained: false
+    ct_encoder:
+      type: "resnet18"
+      out_channels: 256
+      pretrained: false
+
+  # 3D U-Net denoiser for image-level diffusion
+  unet3d:
+    in_channels: 1  # Fused image (single channel)
+    out_channels: 1
+    cond_channels: 512  # MRI (256) + CT (256) conditioning
+    base_channels: 32  # Reduced from 64 for memory
+    channel_mult: [1, 2]  # Only 2 levels for thin 3D volumes (26→13 slices)
+    num_res_blocks: 1  # One block per level to minimize depth
+    attention_resolutions: []  # Disable attention for simplicity
+    dropout: 0.1
+    use_checkpoint: false  # Disabled - causes OOM during backward
+
+  # Diffusion process
+  diffusion:
+    num_timesteps: 1000
+    beta_schedule: "cosine"  # Cosine schedule (better for images)
+    sampling_timesteps: 50  # DDIM sampling (faster inference)
+
+  # Lesion segmentation head (frozen pretrained)
+  lesion_head:
+    type: "unet3d"  # 3D U-Net for segmentation
+    pretrained: null  # Path to pretrained weights (TODO: train or download)
+    frozen: true  # Freeze during training
+    enabled: false  # Disable if no pretrained model available
+
+# ROI guidance parameters (Equation 2 from proposal)
+roi_guidance:
+  # ROI loss weights (α, β, γ)
+  alpha: 1.0      # Brain region weight (SSIM with MRI)
+  beta: 1.0       # Bone region weight (SSIM with CT)
+  gamma: 2.0      # Lesion region weight (higher priority)
+
+  # Lesion loss sub-weights (λ1, λ2, λ3)
+  lesion_weights:
+    dice: 1.0     # λ1: Dice coefficient
+    nsd: 1.0      # λ2: Normalized Surface Dice
+    hd95: 0.5     # λ3: Hausdorff Distance 95th percentile
+
+  # Guidance strengths during sampling
+  eta: 0.1        # ROI loss guidance strength
+  eta_u: 0.05     # Uncertainty guidance strength
+
+  # NSD tolerance
+  nsd_tolerance_mm: 2.0  # τ in NSD@τmm metric
+
+# Registration robustness (Section 3.3)
+registration:
+  warp_jitter: true
+  amplitude_mm: 2.0  # Random warp amplitude (1-3mm)
+  apply_prob: 0.5    # Probability of applying warp jitter
+  tolerance_mm: 2.0  # Tolerance band for boundary metrics
+
+# Uncertainty estimation (Section 3.4)
+uncertainty:
+  enabled: true
+  num_samples: 5  # Number of samples for ensemble uncertainty
+  calibration:
+    enabled: true
+    metrics: ["ece", "brier"]
+  modulate_guidance: true  # Use uncertainty to modulate guidance (Equation 4)
+  kappa: 0.5  # Uncertainty modulation factor
+
+# Training hyperparameters
+training:
+  batch_size: 1  # Variable image sizes require batch_size=1
+  gradient_accumulation_steps: 8  # Effective batch size = 1 * 8 = 8
+  num_epochs: 200
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  warmup_epochs: 10
+  gradient_clip: 1.0
+  mixed_precision: false  # Disabled FP16 due to OOM on large volumes
+
+  # Loss weights (L_total = L_diffusion + λ_roi * L_ROI)
+  loss_weights:
+    diffusion: 1.0  # Standard diffusion loss
+    roi: 1.0        # ROI composite loss weight
+
+  # Optimizer
+  optimizer: "adamw"
+  betas: [0.9, 0.999]
+  eps: 0.00000001
+
+  # Scheduler
+  scheduler: "cosine"
+  min_lr: 0.000001
+
+# Data settings
+data:
+  dataset: "apis"  # APIS (acute stroke CT-MRI pairs)
+  data_dir: "./data/apis/preproc"  # Preprocessed data
+  splits_dir: "./data/apis/splits"
+
+  # Image properties
+  spacing: [1.0, 1.0, 1.0]  # Target isotropic spacing (mm)
+  size: [128, 128, 128]     # Target volume size (D, H, W)
+
+  # Data loading
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+
+  # Augmentation
+  augmentation:
+    enabled: true
+    random_flip: 0.5
+    random_rotation: 10  # degrees
+    random_scale: [0.9, 1.1]
+    random_noise: 0.01
+    random_gamma: [0.8, 1.2]
+
+# Disease-specific presets (clinician-tunable parameters)
+disease_presets:
+  # Brain tumor: emphasize brain tissue fidelity
+  brain_tumor:
+    alpha: 1.5  # Higher brain weight
+    beta: 0.5   # Lower bone weight
+    gamma: 2.0  # Lesion preservation
+    description: "Brain parenchyma and tumor boundaries"
+
+  # Bone tumor: emphasize bone detail
+  bone_tumor:
+    alpha: 0.5
+    beta: 2.0   # Higher bone weight
+    gamma: 2.0
+    description: "Bone structure and tumor invasion"
+
+  # Metastasis: emphasize lesion detection
+  metastasis:
+    alpha: 1.0
+    beta: 1.0
+    gamma: 3.0  # Very high lesion weight
+    description: "Multi-focal lesion detection"
+
+  # Stroke (default for APIS): balanced
+  stroke:
+    alpha: 1.0
+    beta: 0.8
+    gamma: 2.5  # High lesion weight for infarct
+    description: "Ischemic lesion and tissue viability"
+
+  # Default (balanced)
+  default:
+    alpha: 1.0
+    beta: 1.0
+    gamma: 2.0
+    description: "Balanced multi-ROI fusion"
+
+# Evaluation settings
+evaluation:
+  # Primary ROI metrics (Section 4)
+  primary_metrics:
+    lesion:
+      - dice
+      - nsd@2mm
+      - hd95
+    brain:
+      - ssim
+      - fsim
+    bone:
+      - psnr
+      - ssim
+
+  # Secondary global metrics
+  secondary_metrics:
+    - psnr
+    - ssim
+    - fsim
+    - fmi
+
+  # Uncertainty metrics
+  uncertainty_metrics:
+    - ece  # Expected Calibration Error
+    - brier  # Brier score
+
+  # Visualization
+  visualization:
+    save_samples: true
+    num_samples: 10
+    save_uncertainty_maps: true
+
+# Checkpointing
+checkpoint:
+  save_best: true
+  metric: "lesion/nsd@2mm"  # Primary metric for best model
+  mode: "max"  # Higher is better
+  save_last: true
+  save_top_k: 3

@@ -87,3 +87,17 @@ docs/_build/
 # Environment
 .env
 .env.local
+
+# Work directory
+/work/
+
+# Dataset archives
+*.zip
+SynthRAD_data/
+Miniconda3-*.sh
+
+# Temporary demo/test files
+demo_*.py
+test_*.py
+convert_splits.py
+start_workflow.py
