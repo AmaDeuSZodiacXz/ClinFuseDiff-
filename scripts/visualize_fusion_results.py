@@ -89,24 +89,24 @@ def save_fusion_visualization(
     fig.suptitle(f'Epoch {epoch} - {case_id}', fontsize=16, fontweight='bold')
 
     for i, slice_idx in enumerate(slice_idxs):
-        # MRI
+        # MRI (axial; transpose to match radiological view)
         ax = axes[i, 0]
-        mri_slice = normalize_for_display(mri_np[slice_idx])
-        ax.imshow(mri_slice, cmap='gray')
+        mri_slice = normalize_for_display(mri_np[slice_idx].T)
+        ax.imshow(mri_slice, cmap='gray', origin='lower')
         ax.set_title(f'MRI - Slice {slice_idx}/{d}')
         ax.axis('off')
 
-        # CT
+        # CT (axial)
         ax = axes[i, 1]
-        ct_slice = normalize_for_display(ct_np[slice_idx])
-        ax.imshow(ct_slice, cmap='gray')
+        ct_slice = normalize_for_display(ct_np[slice_idx].T)
+        ax.imshow(ct_slice, cmap='gray', origin='lower')
         ax.set_title(f'CT - Slice {slice_idx}/{d}')
         ax.axis('off')
 
-        # Fused
+        # Fused (axial)
         ax = axes[i, 2]
-        fused_slice = normalize_for_display(fused_np[slice_idx])
-        ax.imshow(fused_slice, cmap='gray')
+        fused_slice = normalize_for_display(fused_np[slice_idx].T)
+        ax.imshow(fused_slice, cmap='gray', origin='lower')
         ax.set_title(f'Fused - Slice {slice_idx}/{d}')
         ax.axis('off')
 
@@ -132,31 +132,31 @@ def save_fusion_visualization(
             fused_slice = normalize_for_display(fused_np[slice_idx])
 
             # Fused image
-            axes[i, 0].imshow(fused_slice, cmap='gray')
+            axes[i, 0].imshow(fused_slice, cmap='gray', origin='lower')
             axes[i, 0].set_title(f'Fused - Slice {slice_idx}')
             axes[i, 0].axis('off')
 
             # Brain mask overlay
-            axes[i, 1].imshow(fused_slice, cmap='gray')
+            axes[i, 1].imshow(fused_slice, cmap='gray', origin='lower')
             if brain_mask is not None:
-                brain_np = brain_mask[0, 0, slice_idx].cpu().numpy()
-                axes[i, 1].imshow(brain_np, cmap='Reds', alpha=0.3 * (brain_np > 0))
+                brain_np = brain_mask[0, 0, slice_idx].cpu().numpy().T
+                axes[i, 1].imshow(brain_np, cmap='Reds', alpha=0.3 * (brain_np > 0), origin='lower')
             axes[i, 1].set_title('Brain ROI')
             axes[i, 1].axis('off')
 
             # Bone mask overlay
-            axes[i, 2].imshow(fused_slice, cmap='gray')
+            axes[i, 2].imshow(fused_slice, cmap='gray', origin='lower')
             if bone_mask is not None:
-                bone_np = bone_mask[0, 0, slice_idx].cpu().numpy()
-                axes[i, 2].imshow(bone_np, cmap='Blues', alpha=0.3 * (bone_np > 0))
+                bone_np = bone_mask[0, 0, slice_idx].cpu().numpy().T
+                axes[i, 2].imshow(bone_np, cmap='Blues', alpha=0.3 * (bone_np > 0), origin='lower')
             axes[i, 2].set_title('Bone ROI')
             axes[i, 2].axis('off')
 
             # Lesion mask overlay
-            axes[i, 3].imshow(fused_slice, cmap='gray')
+            axes[i, 3].imshow(fused_slice, cmap='gray', origin='lower')
             if lesion_mask is not None:
-                lesion_np = lesion_mask[0, 0, slice_idx].cpu().numpy()
-                axes[i, 3].imshow(lesion_np, cmap='Greens', alpha=0.5 * (lesion_np > 0))
+                lesion_np = lesion_mask[0, 0, slice_idx].cpu().numpy().T
+                axes[i, 3].imshow(lesion_np, cmap='Greens', alpha=0.5 * (lesion_np > 0), origin='lower')
             axes[i, 3].set_title('Lesion Mask')
             axes[i, 3].axis('off')
 
