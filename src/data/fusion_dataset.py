@@ -132,21 +132,31 @@ class ImageFusionDataset(Dataset):
         print(f"Validated: {len(self.cases)} cases with complete data")
 
     def _normalize_ct(self, ct_volume: np.ndarray) -> np.ndarray:
-        """Normalize CT intensity (Hounsfield Units) - Z-score like MRI"""
-        # Clip outliers to typical HU range
-        ct_volume = np.clip(ct_volume, -1000, 1000)
+        """
+        Normalize CT using clinical windowing (proposal requirement)
 
-        # Z-score normalization (same as MRI for consistent scale)
-        mask = ct_volume > -900  # Exclude air/background
-        if mask.sum() > 0:
-            mean = ct_volume[mask].mean()
-            std = ct_volume[mask].std()
-            if std > 0:
-                ct_volume = (ct_volume - mean) / std
-            else:
-                ct_volume = ct_volume - mean
+        Brain + Bone Window (clinical standard for head CT):
+        - Soft tissue: 0-80 HU (brain parenchyma)
+        - Bone: 200-1000 HU (skull, preserved for ROI guidance)
 
-        return ct_volume.astype(np.float32)
+        Window: Center=40 HU, Width=400 HU → Range: [-160, 240] HU
+        Maps to [-2, 2] range to match MRI Z-score scale
+        """
+        # Clinical brain+bone window
+        window_center = 40
+        window_width = 400
+
+        window_min = window_center - window_width / 2  # -160 HU
+        window_max = window_center + window_width / 2  # 240 HU
+
+        # Clip to window
+        ct_windowed = np.clip(ct_volume, window_min, window_max)
+
+        # Normalize to [-2, 2] range (similar to MRI Z-score)
+        # Formula: 4 * (x - min) / width - 2
+        ct_normalized = 4.0 * (ct_windowed - window_min) / window_width - 2.0
+
+        return ct_normalized.astype(np.float32)
 
     def _normalize_mri(self, mri_volume: np.ndarray) -> np.ndarray:
         """Normalize MRI/ADC intensity (z-score normalization)"""
