@@ -348,8 +348,6 @@ class FusionTrainer:
 
             # Sample fused image using guided diffusion
             fused = self.model.sample(
-                batch_size=ct.shape[0],
-                shape=(1, *ct.shape[2:]),  # (C, D, H, W)
                 mri=mri,
                 ct=ct,
                 brain_mask=brain_mask,
