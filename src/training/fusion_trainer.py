@@ -368,6 +368,16 @@ class FusionTrainer:
 
             t_elapsed = time.time() - t_start
             print(f"  ✓ Sampling completed in {t_elapsed:.1f}s")
+
+            # Debug: Check data validity
+            print(f"  Debug info:")
+            print(f"    Fused shape: {fused.shape}, range: [{fused.min():.3f}, {fused.max():.3f}]")
+            print(f"    MRI shape: {mri.shape}, range: [{mri.min():.3f}, {mri.max():.3f}]")
+            print(f"    CT shape: {ct.shape}, range: [{ct.min():.3f}, {ct.max():.3f}]")
+            print(f"    Brain mask: {brain_mask.shape if brain_mask is not None else 'None'}, sum: {brain_mask.sum() if brain_mask is not None else 0}")
+            print(f"    Bone mask: {bone_mask.shape if bone_mask is not None else 'None'}, sum: {bone_mask.sum() if bone_mask is not None else 0}")
+            print(f"    Lesion mask: {lesion_mask.shape if lesion_mask is not None else 'None'}, sum: {lesion_mask.sum() if lesion_mask is not None else 0}")
+
             print(f"  Computing metrics...")
 
             # Compute metrics
@@ -382,7 +392,10 @@ class FusionTrainer:
             )
             all_metrics.append(batch_metrics)
 
-            print(f"  Metrics computed: Dice={batch_metrics.get('lesion_dice', 0):.3f}, SSIM={batch_metrics.get('brain_ssim', 0):.3f}")
+            # Print all metrics for debugging
+            print(f"  All metrics computed:")
+            for k, v in batch_metrics.items():
+                print(f"    {k}: {v:.4f}")
             print(f"[Validation {batch_idx+1}/9] Completed in {time.time() - t_start:.1f}s total\n")
 
         # Average metrics
